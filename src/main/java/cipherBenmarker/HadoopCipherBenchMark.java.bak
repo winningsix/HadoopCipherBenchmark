@@ -1,0 +1,95 @@
+package cipherBenmarker;
+
+import org.apache.hadoop.conf.*;
+import org.apache.hadoop.crypto.*;
+
+import java.io.*;
+import java.util.*;
+
+/**
+ * Created by root on 12/5/14.
+ */
+public class HadoopCipherBenchMark extends CipherBenchMark {
+  private String keyProviderName = "org.apache.hadoop.crypto.OpensslAesCtrCryptoCodec";
+  final static int BUFFERSIZE = 1024*1024;
+
+  public HadoopCipherBenchMark(String keyProviderName, int dataSize) {
+    this.keyProviderName = keyProviderName;
+    this.dataSize = dataSize;
+    benchMarkName = "HadoopCipherBenchMark using " + keyProviderName;
+  }
+
+  @Override
+  public void getBenchMarkData(int iterations) {
+    Configuration conf = new Configuration();
+    conf.set("hadoop.security.crypto.codec.classes.aes.ctr.nopadding", getProvider());
+    CryptoCodec codec = CryptoCodec.getInstance(conf, CipherSuite.AES_CTR_NOPADDING);
+    Random r = new Random();
+    byte[] iv = new byte[16];
+    byte[] key = new byte[16];
+    r.nextBytes(iv);
+    r.nextBytes(key);
+    byte[][] data = prepareData(dataSize);
+
+
+    try {
+
+      ByteArrayOutputStream outputStream = new ByteArrayOutputStream(dataSize);
+      CryptoOutputStream cryptoOutputStream =
+        new CryptoOutputStream(outputStream, codec, BUFFERSIZE, key, iv);
+
+      
+
+      System.out.println("encryption: ");
+      System.out.println("iterations:" + iterations);
+      System.out.println("entry count: " + entryCount);
+      System.out.println("entry size:" + dataSize);
+
+      long begin = Calendar.getInstance(TimeZone.getTimeZone("UTC")).getTimeInMillis();
+      for (int i = 0; i < iterations; i++) {
+        int j = i % entryCount;
+        cryptoOutputStream.write(data[j]);
+        outputStream.reset();
+      }
+
+      long end = Calendar.getInstance(TimeZone.getTimeZone("UTC")).getTimeInMillis();
+      printResult("encryption", 1000.0 * dataSize * iterations / ((end - begin) * 1024.0 * 1024.0));
+
+
+
+      System.out.println("decryption: ");
+      System.out.println("iterations:" + iterations);
+      System.out.println("entry count: " + entryCount);
+      System.out.println("entry size:" + dataSize);
+
+      ByteArrayInputStream[] inputStreams = new ByteArrayInputStream[entryCount];
+      CryptoInputStream[] cryptoInputStreams = new CryptoInputStream[entryCount];
+      for (int i = 0; i < inputStreams.length; i++) {
+        inputStreams[i] = new ByteArrayInputStream(data[i]);
+        cryptoInputStreams[i] = new CryptoInputStream(inputStreams[i], codec, BUFFERSIZE, key, iv);
+      }
+
+      data = prepareData(dataSize);
+
+      begin = Calendar.getInstance(TimeZone.getTimeZone("UTC")).getTimeInMillis();
+
+      for (int i = 0; i < iterations; i++) {
+        int j = i % entryCount;
+        cryptoInputStreams[j].read(data[0], 0, dataSize);
+        inputStreams[j].reset();
+      }
+
+      end = Calendar.getInstance(TimeZone.getTimeZone("UTC")).getTimeInMillis();
+
+      printResult("decryption", 1000.0 * dataSize * iterations / ((end - begin) * 1024.0 * 1024.0));
+
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+  }
+
+  @Override
+  public String getProvider() {
+    return keyProviderName;
+  }
+}
